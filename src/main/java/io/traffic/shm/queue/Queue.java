@@ -106,7 +106,7 @@ public class Queue implements Closeable {
         long write_offset = writeCursor.offset();
         long read_offset = readCursor.offset();
 
-        if (read_offset > write_offset && read_offset - write_offset - block.sizeof() <= 0) {
+        if (read_offset > write_offset && read_offset - write_offset - block.sizeof() <= 4) {
             return false;
         }
         return write(write_offset, block);
