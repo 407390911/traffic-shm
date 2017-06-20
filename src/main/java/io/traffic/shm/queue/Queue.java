@@ -69,11 +69,13 @@ public class Queue implements Closeable {
 
 
     public Block poll() {
-        long offset = readCursor.offset();
-        int ack = UNSAFE.getIntVolatile(address + offset);
+        long read = readCursor.offset();
+        long read_abs = Math.abs(read);
+
+        int ack = UNSAFE.getIntVolatile(address + read_abs);
 
         if (ack == ACK.DATA) {
-            return read(offset);
+            return read(read, read_abs);
         }
         return null;
     }
@@ -95,7 +97,7 @@ public class Queue implements Closeable {
         if (overflow > 0) {
             return false;
         } else {
-            return write(offset, block);
+            return write(offset, readCursor.offset(), block);
         }
     }
 
@@ -103,36 +105,49 @@ public class Queue implements Closeable {
         Assert.notNull(block);
         Assert.notNull(block.getPayload());
 
-        long write_offset = writeCursor.offset();
-        long read_offset = readCursor.offset();
-
-        if (read_offset > write_offset && read_offset - write_offset - block.sizeof() <= 4) {
-            return false;
-        }
-        return write(write_offset, block);
+        return write(writeCursor.offset(), readCursor.offset(), block);
     }
 
-    private Block read(long offset) {
-        Block block = Block.load(capacity, address, offset + Constant.INT_SIZE);
-        long shift = offset + block.sizeof();
+    private Block read(long read, long read_abs) {
+        long mode = read;
+        Block block = Block.load(capacity, address, read_abs + Constant.INT_SIZE);
+        long shift = read_abs + block.sizeof();
         if (shift >= capacity) {
             shift = Metadata.DATA_OFFSET + shift % capacity;
+            mode = -mode;
         }
-        if (readCursor.update(offset, shift)) {
+        if (readCursor.update(read, (mode < 0) ? -shift : shift)) {
             return block;
         }
         return null;
     }
 
-    private boolean write(long offset, Block block) {
-        long overflow = offset + block.sizeof() - capacity;
-        long shift = overflow > 0 ? Metadata.DATA_OFFSET + overflow : offset + block.sizeof();
-        if (!writeCursor.update(offset, shift)) {
+    private boolean write(long write, long read, Block block) {
+        long mode = write;
+        long write_abs = Math.abs(write);
+        long read_abs = Math.abs(read);
+
+        long shift = write_abs + block.sizeof();
+        long overflow = shift - capacity;
+
+        if (overflow > 0) {
+            shift = Metadata.DATA_OFFSET + overflow;
+            if (shift >= read_abs - 4) {
+                return false;
+            }
+            mode = -mode;
+        } else {
+            if (write * read < 0) {
+                if (shift >= read_abs - 4) {
+                    return false;
+                }
+            }
+        }
+        if (!writeCursor.update(write, (mode < 0) ? -shift : shift)) {
             return false;
         }
-        block.append(overflow, capacity, address, offset);
-        block.ack(address, offset - Constant.INT_SIZE);
+        block.append(overflow, capacity, address, write_abs);
+        block.ack(address, write_abs - Constant.INT_SIZE);
         return true;
     }
-
 }

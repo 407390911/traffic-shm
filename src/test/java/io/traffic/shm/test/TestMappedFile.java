@@ -71,7 +71,7 @@ public class TestMappedFile {
     public void testOffer() throws Exception {
         Queue queue = Queue.map("/Users/peptos/shm", 2000L, 1, 0);
 
-        for (int i = 0; i <= 30000; i++) {
+        for (int i = 0; i <= 3000; i++) {
             String str = "----";
             String string = str + i + str;
             byte[] bytes = string.getBytes("UTF-8");
@@ -104,5 +104,4 @@ public class TestMappedFile {
             t.start();
         }
     }
-
 }
